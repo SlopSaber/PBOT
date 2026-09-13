@@ -13,7 +13,7 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
 {
     private readonly SiraLog _siraLog;
     private readonly IHttpService _httpService;
-    private readonly IPlatformUserModel _platformUserModel;
+    private readonly OculusStudios.Platform.Core.IPlatform _platformUserModel;
     private const string _beatLeaderApiUrl = "https://api.beatleader.xyz";
     private CachedContractId? _cached;
 
@@ -23,7 +23,7 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
     private record struct BeatLeaderScore([property: JsonProperty("id")] int Id, [property: JsonProperty("modifiedScore")] int TotalScore, [property: JsonProperty("timeset")] string TimeSet); // Why is the timestamp a string?
     private class BeatLeaderMetadata : DeltaMetadata { [JsonIgnore] public int Id { get; set; } }
 
-    public BeatLeaderScoreGraphDeltaService(SiraLog siraLog, IHttpService httpService, IPlatformUserModel platformUserModel)
+    public BeatLeaderScoreGraphDeltaService(SiraLog siraLog, IHttpService httpService, OculusStudios.Platform.Core.IPlatform platformUserModel)
     {
         _siraLog = siraLog;
         _httpService = httpService;
@@ -78,8 +78,8 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
         var (hash, mode, difficulty) = contract;
 
         _siraLog.Debug($"Loading metadata for {contract}");
-        var user = await _platformUserModel.GetUserInfo();
-        var url = $"{_beatLeaderApiUrl}/score/{user.platformUserId}/{hash}/{difficulty.SerializedName()}/{mode}";
+        string userId = _platformUserModel.user.userId.ToString();
+        var url = $"{_beatLeaderApiUrl}/score/{userId}/{hash}/{difficulty.SerializedName()}/{mode}";
         var response = await _httpService.GetAsync(url, cancellationToken: cancellationToken);
         if (!response.Successful)
         {
