@@ -30,7 +30,7 @@ internal class DeltaRankUIPanelVisualManager : IInitializable, System.IDisposabl
 
     public void Initialize()
     {
-        if (_initData.hide)
+        if (_initData.hide || !_initData.advancedHUD)
             return;
 
         _deltaPlaybackService.OnFrameUpdated += SetFrame;

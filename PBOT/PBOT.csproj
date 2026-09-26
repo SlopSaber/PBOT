@@ -92,7 +92,7 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="Counters+">
-      <HintPath>..\..\CountersPlus\Counters+\bin\Release\Counters+.dll</HintPath>
+      <HintPath>$(GameDirectory)\Plugins\Counters+.dll</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="SiraUtil">

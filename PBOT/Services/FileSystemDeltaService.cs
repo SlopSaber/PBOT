@@ -12,46 +12,49 @@ namespace PBOT.Services;
 
 internal class FileSystemDeltaService : IDeltaService
 {
-    private static readonly DirectoryInfo _storageDirectory = new(Path.Combine(UnityGame.UserDataPath, "PBOT", "Storage"));
+    private static readonly string _storageDirectory = Path.Combine(UnityGame.UserDataPath, "PBOT", "Storage");
 
     public Task<IReadOnlyList<DeltaFrame>> GetFramesAsync(ScoreContract contract, CancellationToken cancellationToken = default)
     {
-        CreateDirectory();
-        var file = Path.Combine(_storageDirectory.FullName, $"{contract}.deltaf");
-        if (!File.Exists(file))
-            return Task.FromResult<IReadOnlyList<DeltaFrame>>(Array.Empty<DeltaFrame>());
+        return Task.Run<IReadOnlyList<DeltaFrame>>(() =>
+        {
+            CreateDirectory();
+            var file = Path.Combine(_storageDirectory, $"{contract}.deltaf");
+            if (!File.Exists(file))
+                return Array.Empty<DeltaFrame>();
 
-        using var frameFileStream = File.OpenRead(file);
-        var frames = Serializer.Deserialize<List<DeltaFrame>>(frameFileStream);
-        return Task.FromResult<IReadOnlyList<DeltaFrame>>(frames);
+            using var frameFileStream = File.OpenRead(file);
+            return Serializer.Deserialize<List<DeltaFrame>>(frameFileStream);
+        }, cancellationToken);
     }
 
     public Task<DeltaMetadata?> GetMetadataAsync(ScoreContract contract, CancellationToken cancellationToken = default)
     {
-        CreateDirectory();
-        var file = Path.Combine(_storageDirectory.FullName, $"{contract}.delta");
-        if (!File.Exists(file))
-            return Task.FromResult<DeltaMetadata?>(null);
+        return Task.Run<DeltaMetadata?>(() =>
+        {
+            CreateDirectory();
+            var file = Path.Combine(_storageDirectory, $"{contract}.delta");
+            if (!File.Exists(file))
+                return null;
 
-        var metadataString = File.ReadAllText(file);
-        var metadata = JsonConvert.DeserializeObject<DeltaMetadata?>(metadataString);
-        return Task.FromResult(metadata);
+            var metadataString = File.ReadAllText(file);
+            return JsonConvert.DeserializeObject<DeltaMetadata?>(metadataString);
+        }, cancellationToken);
     }
 
     public Task SaveAsync(ScoreContract score, DeltaMetadata metadata, List<DeltaFrame> frames, CancellationToken cancellationToken = default)
     {
-        CreateDirectory();
-        File.WriteAllText(Path.Combine(_storageDirectory.FullName, $"{score}.delta"), JsonConvert.SerializeObject(metadata));
-        using var frameFileStream = File.Create(Path.Combine(_storageDirectory.FullName, $"{score}.deltaf"));
-        Serializer.Serialize(frameFileStream, frames);
-        return Task.CompletedTask;
+        return Task.Run(() =>
+        {
+            CreateDirectory();
+            File.WriteAllText(Path.Combine(_storageDirectory, $"{score}.delta"), JsonConvert.SerializeObject(metadata));
+            using var frameFileStream = File.Create(Path.Combine(_storageDirectory, $"{score}.deltaf"));
+            Serializer.Serialize(frameFileStream, frames);
+        }, cancellationToken);
     }
 
     private static void CreateDirectory()
     {
-        if (_storageDirectory.Exists)
-            return;
-
-        _storageDirectory.Create();
+        Directory.CreateDirectory(_storageDirectory);
     }
 }

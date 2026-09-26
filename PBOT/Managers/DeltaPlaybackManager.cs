@@ -45,21 +45,14 @@ internal class DeltaPlaybackManager : IDeltaPlaybackService, IAsyncInitializable
             return;
 
         var now = _audioTimeSource.songTime;
-        DeltaFrame frame = _frames[_nextFrame];
-        
-        // Check if the frame we're currently examining has reached its time.
-        // We don't need to continue if it has not.
-        if (frame.Time > now)
+        if (_frames[_nextFrame].Time > now)
             return;
 
-        // Find the youngest frame relative to now.
-        while (_frames.Count > _nextFrame && now > frame.Time)
+        // Consume each due frame once, publishing only the latest one.
+        DeltaFrame frame = _frames[_nextFrame++];
+        while (_nextFrame < _frames.Count && _frames[_nextFrame].Time <= now)
         {
-            frame = _frames[_nextFrame];
-            if (frame.Time > now)
-                break;
-
-            _nextFrame++;
+            frame = _frames[_nextFrame++];
         }
 
         // Send frame update
