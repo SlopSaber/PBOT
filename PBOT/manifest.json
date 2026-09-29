@@ -16,6 +16,7 @@
       "Name": "PBOT",
       "Description": "Shows the accuracy from your personal best at the current point in song time.",
       "CounterLocation": "PBOT.Managers.DeltaRankCounterVisualManager",
+      "PreviewLocation": "PBOT.Managers.PBOTCounterPreview",
       "MultiplayerReady": true,
       "BSML": {
         "Host": "PBOT.UI.CounterSettingsViewModel",

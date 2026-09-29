@@ -4,6 +4,7 @@
     <ImportBSMTTargets>true</ImportBSMTTargets>
     <BSMTProjectType>BSIPA</BSMTProjectType>
     <GameDirectory>D:\BSManager\BSInstances\1.45.1</GameDirectory>
+    <CountersPlusPath Condition="'$(CountersPlusPath)' == ''">$(GameDirectory)\Plugins\Counters+.dll</CountersPlusPath>
     <CopyPDB>false</CopyPDB>
     <DisableCopyToGame>false</DisableCopyToGame>
     <TargetFramework>net48</TargetFramework>
@@ -91,8 +92,8 @@
       <HintPath>$(GameDirectory)\Plugins\BSML.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="Counters+">
-      <HintPath>$(GameDirectory)\Plugins\Counters+.dll</HintPath>
+    <Reference Include="$(CountersPlusPath)">
+      <HintPath>$(CountersPlusPath)</HintPath>
       <Private>False</Private>
     </Reference>
     <Reference Include="SiraUtil">
