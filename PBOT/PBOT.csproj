@@ -3,7 +3,7 @@
   <PropertyGroup>
     <ImportBSMTTargets>true</ImportBSMTTargets>
     <BSMTProjectType>BSIPA</BSMTProjectType>
-    <GameDirectory>D:\BSManager\BSInstances\1.45.1</GameDirectory>
+    <GameDirectory>D:\BSManager\BSInstances\1.45.2</GameDirectory>
     <CountersPlusPath Condition="'$(CountersPlusPath)' == ''">$(GameDirectory)\Plugins\Counters+.dll</CountersPlusPath>
     <CopyPDB>false</CopyPDB>
     <DisableCopyToGame>false</DisableCopyToGame>
