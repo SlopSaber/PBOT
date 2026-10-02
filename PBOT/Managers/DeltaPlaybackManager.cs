@@ -9,7 +9,7 @@ using System;
 
 namespace PBOT.Managers;
 
-internal class DeltaPlaybackManager : IDeltaPlaybackService, IAsyncInitializable, ITickable
+internal class DeltaPlaybackManager : IDeltaPlaybackService, IAsyncInitializable, ITickable, IDisposable
 {
     private readonly ScoreContract _scoreContract;
     private readonly IAudioTimeSource _audioTimeSource;
@@ -17,6 +17,8 @@ internal class DeltaPlaybackManager : IDeltaPlaybackService, IAsyncInitializable
 
     private int _nextFrame;
     private IReadOnlyList<DeltaFrame>? _frames;
+    private bool _disposed;
+    private int _initializationRevision;
 
     public event Action<DeltaFrame>? OnFrameUpdated;
 
@@ -30,18 +32,22 @@ internal class DeltaPlaybackManager : IDeltaPlaybackService, IAsyncInitializable
 
     public async Task InitializeAsync(CancellationToken token)
     {
+        if (_disposed)
+            return;
+        int revision = ++_initializationRevision;
         var frames = await _multiplexedDeltaService.GetFramesAsync(_scoreContract, token);
 
-        if (frames.Count is 0)
+        if (_disposed || token.IsCancellationRequested || revision != _initializationRevision || frames.Count is 0)
             return;
 
+        _nextFrame = 0;
         _frames = frames;
     }
 
     public void Tick()
     {
         // Don't update if we don't have any frames or we've processed all of them.
-        if (_frames is null || _nextFrame >= _frames.Count)
+        if (_disposed || _frames is null || _nextFrame >= _frames.Count)
             return;
 
         var now = _audioTimeSource.songTime;
@@ -57,5 +63,13 @@ internal class DeltaPlaybackManager : IDeltaPlaybackService, IAsyncInitializable
 
         // Send frame update
         OnFrameUpdated?.Invoke(frame);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        ++_initializationRevision;
+        _frames = null;
+        OnFrameUpdated = null;
     }
 }

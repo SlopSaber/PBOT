@@ -34,7 +34,8 @@ internal class CachableTimeBasedMultiplexedDeltaService : IMultiplexedDeltaServi
         {
             var beatLeaderFrames = await _beatLeaderScoreGraphDeltaService.GetFramesAsync(contract, cancellationToken);
             if (beatLeaderFrames.Count > 0)
-                await _fileSystemDeltaService.SaveAsync(contract, beatLeaderMetadata, beatLeaderFrames.ToList(), cancellationToken);
+                await _fileSystemDeltaService.SaveAsync(contract, beatLeaderMetadata,
+                    beatLeaderFrames as List<DeltaFrame> ?? beatLeaderFrames.ToList(), cancellationToken);
             return beatLeaderFrames;
         }
 

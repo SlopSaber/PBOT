@@ -4,6 +4,8 @@ using SiraUtil.Logging;
 using SiraUtil.Web;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -16,12 +18,15 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
     private readonly OculusStudios.Platform.Core.IPlatform _platformUserModel;
     private const string _beatLeaderApiUrl = "https://api.beatleader.xyz";
     private CachedContractId? _cached;
+    private long _metadataRevision;
+    private readonly HashSet<Task> _preparations = new();
 
     private record struct CachedContractId(int Id, ScoreContract Contract);
     private record struct ScoreGraphTracker([property: JsonProperty("graph")] float[] Graph);
     private record struct BeatLeaderScoreStatistics([property: JsonProperty("scoreGraphTracker")] ScoreGraphTracker Tracker);
     private record struct BeatLeaderScore([property: JsonProperty("id")] int Id, [property: JsonProperty("modifiedScore")] int TotalScore, [property: JsonProperty("timeset")] string TimeSet); // Why is the timestamp a string?
     private class BeatLeaderMetadata : DeltaMetadata { [JsonIgnore] public int Id { get; set; } }
+    private record struct MetadataRequest(string Json, CultureInfo Culture);
 
     public BeatLeaderScoreGraphDeltaService(SiraLog siraLog, IHttpService httpService, OculusStudios.Platform.Core.IPlatform platformUserModel)
     {
@@ -59,22 +64,18 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
 
         _siraLog.Debug("Reading statistics response body");
         var data = await response.ReadAsStringAsync();
-        var graph = JsonConvert.DeserializeObject<BeatLeaderScoreStatistics>(data).Tracker.Graph;
-
-        List<DeltaFrame> frames = new(graph.Length + 1)
+        if (JsonConvert.DefaultSettings != null)
         {
-            new DeltaFrame { Time = 0f, Current = 1f }
-        };
-
-        float second = 1f;
-        foreach (var acc in graph)
-            frames.Add(new DeltaFrame { Time = second++, Current = acc });
-
-        return frames;
+            // Custom converters retain their caller contract; capture their result before worker projection.
+            var graph = JsonConvert.DeserializeObject<BeatLeaderScoreStatistics>(data).Tracker.Graph;
+            return await PrepareAsync(ProjectGraph, (float[])graph.Clone(), cancellationToken);
+        }
+        return await PrepareAsync(ParseGraph, data, cancellationToken);
     }
 
     public async Task<DeltaMetadata?> GetMetadataAsync(ScoreContract contract, CancellationToken cancellationToken = default)
     {
+        long revision = ++_metadataRevision;
         var (hash, mode, difficulty) = contract;
 
         _siraLog.Debug($"Loading metadata for {contract}");
@@ -89,19 +90,75 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
 
         _siraLog.Debug("Reading response body");
         var data = await response.ReadAsStringAsync();
-        var (id, totalScore, timeSetString) = JsonConvert.DeserializeObject<BeatLeaderScore>(data);
+        BeatLeaderMetadata metadata;
+        if (JsonConvert.DefaultSettings != null)
+        {
+            var score = JsonConvert.DeserializeObject<BeatLeaderScore>(data);
+            metadata = CreateMetadata(score, CultureInfo.CurrentCulture);
+        }
+        else
+        {
+            CultureInfo culture = CultureInfo.ReadOnly((CultureInfo)CultureInfo.CurrentCulture.Clone());
+            metadata = await PrepareAsync(ParseMetadata, new MetadataRequest(data, culture), cancellationToken);
+        }
 
         _siraLog.Debug("Caching replay url");
-        _cached = new CachedContractId(id, contract);
+        if (_metadataRevision == revision)
+            _cached = new CachedContractId(metadata.Id, contract);
 
         _siraLog.Debug("Generating metadata");
-        return new BeatLeaderMetadata
+        return metadata;
+    }
+
+    private async Task<T> PrepareAsync<T>(Func<object?, T> prepare, object state, CancellationToken token)
+    {
+        Task<T> worker = Task.Factory.StartNew(prepare, state, token, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
+        _preparations.Add(worker);
+        try
         {
-            Id = id,
+            return await worker;
+        }
+        finally
+        {
+            _preparations.Remove(worker);
+        }
+    }
+
+    private static List<DeltaFrame> ParseGraph(object? state)
+        => ProjectGraph(DeserializeDefault<BeatLeaderScoreStatistics>((string)state!).Tracker.Graph);
+
+    private static List<DeltaFrame> ProjectGraph(object? state)
+    {
+        var graph = (float[])state!;
+        List<DeltaFrame> frames = new(graph.Length + 1) { new DeltaFrame { Time = 0f, Current = 1f } };
+        float second = 1f;
+        foreach (float accuracy in graph)
+            frames.Add(new DeltaFrame { Time = second++, Current = accuracy });
+        return frames;
+    }
+
+    private static BeatLeaderMetadata ParseMetadata(object? state)
+    {
+        var request = (MetadataRequest)state!;
+        return CreateMetadata(DeserializeDefault<BeatLeaderScore>(request.Json), request.Culture);
+    }
+
+    private static BeatLeaderMetadata CreateMetadata(BeatLeaderScore score, CultureInfo culture)
+        => new()
+        {
+            Id = score.Id,
             Source = "BeatLeader Score Graph",
-            TotalScore = totalScore,
-            Timestamp = DateTimeOffset.FromUnixTimeSeconds(long.Parse(timeSetString)),
+            TotalScore = score.TotalScore,
+            Timestamp = DateTimeOffset.FromUnixTimeSeconds(long.Parse(score.TimeSet, NumberStyles.Integer, culture)),
         };
+
+    private static T DeserializeDefault<T>(string json)
+    {
+        // Capture default behavior without invoking a later replacement global settings factory on the worker.
+        JsonSerializer serializer = JsonSerializer.Create();
+        serializer.CheckAdditionalContent = true;
+        using var reader = new JsonTextReader(new StringReader(json));
+        return serializer.Deserialize<T>(reader)!;
     }
 
     public Task SaveAsync(ScoreContract score, DeltaMetadata metadata, List<DeltaFrame> frames, CancellationToken cancellationToken = default)
