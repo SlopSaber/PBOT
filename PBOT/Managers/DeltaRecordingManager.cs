@@ -59,6 +59,10 @@ internal class DeltaRecordingManager : IInitializable, IDisposable
 
     private void RelativeScoreAndImmediateRankCounter_RelativeScoreOrImmediateRankDidChangeEvent()
     {
+        // A detached recording belongs to the file worker and must not receive later score events.
+        if (!ReferenceEquals(_frameContainerService.Frames, _recording))
+            return;
+
         _recording?.Add(new DeltaFrame
         {
             Time = _audioTimeSource.songTime,

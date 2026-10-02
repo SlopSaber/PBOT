@@ -3,6 +3,7 @@ using PBOT.Services;
 using SiraUtil.Logging;
 using SiraUtil.Services;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Zenject;
 
@@ -13,12 +14,15 @@ internal class DeltaFrameSavingManager : IInitializable, IDisposable
     private readonly ILevelFinisher _levelFinisher;
     private readonly IFrameContainerService _frameContainerService;
     private readonly FileSystemDeltaService _fileSystemDeltaService;
+    private readonly SiraLog _siraLog;
+    private readonly HashSet<Task> _pendingSaves = new();
 
-    public DeltaFrameSavingManager(ILevelFinisher levelFinisher, IFrameContainerService frameContainerService, FileSystemDeltaService fileSystemDeltaService)
+    public DeltaFrameSavingManager(ILevelFinisher levelFinisher, IFrameContainerService frameContainerService, FileSystemDeltaService fileSystemDeltaService, SiraLog siraLog)
     {
         _levelFinisher = levelFinisher;
         _frameContainerService = frameContainerService;
         _fileSystemDeltaService = fileSystemDeltaService;
+        _siraLog = siraLog;
     }
 
     public void Initialize()
@@ -53,27 +57,26 @@ internal class DeltaFrameSavingManager : IInitializable, IDisposable
         var score = results.multipliedScore;
         var diff = beatmapKey.difficulty;
 
-        Task.Run(async () =>
+        ScoreContract contract = new(level, mode, diff);
+        Task pending = _fileSystemDeltaService.SaveIfBetterAsync(contract, score, frames);
+        _pendingSaves.Add(pending);
+        ObserveSave(pending);
+    }
+
+    private async void ObserveSave(Task pending)
+    {
+        try
         {
-            ScoreContract contract = new(level, mode, diff);
-
-            // Don't save if we already have metadata for this score and it hasn't been beaten.
-            var metadata = await _fileSystemDeltaService.GetMetadataAsync(contract);
-            if (metadata is not null && metadata.TotalScore >= score)
-                return;
-
-            // Create the new metadata for this score
-            metadata = new DeltaMetadata
-            {
-                Source = "Local",
-                Timestamp = DateTimeOffset.UtcNow.AddMinutes(2f), // Add some arbituary time so the score on BeatLeader doesn't immediately override this version
-                TotalScore = score,
-                Version = new Hive.Versioning.Version(1, 0, 0)
-            };
-
-            // Save the delta frames (metadata and binary)
-            await _fileSystemDeltaService.SaveAsync(contract, metadata, frames, default);
-        });
+            await pending;
+        }
+        catch (Exception error)
+        {
+            _siraLog.Error(error);
+        }
+        finally
+        {
+            _pendingSaves.Remove(pending);
+        }
     }
 
     public void Dispose()
