@@ -154,6 +154,8 @@ internal class BeatLeaderScoreGraphDeltaService : IDeltaService
 
     private static T DeserializeDefault<T>(string json)
     {
+        if (json == null)
+            throw new ArgumentNullException("value");
         // Capture default behavior without invoking a later replacement global settings factory on the worker.
         JsonSerializer serializer = JsonSerializer.Create();
         serializer.CheckAdditionalContent = true;
